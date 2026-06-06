@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://api.injahow.cn/music/";
+const API_BASE_URL = "https://music-api.gdstudio.xyz/api.php";
 const KUWO_HOST_PATTERN = /(^|\.)kuwo\.cn$/i;
 const SAFE_RESPONSE_HEADERS = ["content-type", "cache-control", "accept-ranges", "content-length", "content-range", "etag", "last-modified", "expires"];
 
@@ -82,6 +82,7 @@ async function proxyKuwoAudio(targetUrl: string, request: Request): Promise<Resp
     headers,
   });
 }
+
 async function proxyApiRequest(url: URL, request: Request, waitUntil?: (promise: Promise<any>) => void): Promise<Response> {
   const cache = caches.default;
   
@@ -112,32 +113,18 @@ async function proxyApiRequest(url: URL, request: Request, waitUntil?: (promise:
 
   console.log(`[Cache MISS] Fetching from upstream: ${url.toString()}`);
 
-  // ---------- 修改开始：适配 Meting API ----------
   const apiUrl = new URL(API_BASE_URL);
-  
-  // 将 Solara 的参数名 'source' 和 'types' 转换为 Meting API 要求的 'server' 和 'type'
-  let server = url.searchParams.get('source');
-  let type = url.searchParams.get('types');
-  
-  if (server) apiUrl.searchParams.set('server', server);
-  if (type) {
-      // 将 Solara 的 'types' 值转换为 Meting API 的 'type' 值
-      let metingType = type;
-      if (type === 'url') metingType = 'url';    // 'url' 保持不变
-      if (type === 'search') metingType = 'search'; // 'search' 保持不变
-      if (type === 'lyric') metingType = 'lrc';   // 'lyric' 需要转换为 'lrc'
-      apiUrl.searchParams.set('type', metingType);
-  }
-  
-  // 复制其他所有参数（如 id, name, br 等）
   url.searchParams.forEach((value, key) => {
-      if (key !== 'target' && key !== 'callback' && key !== 's' && key !== 'source' && key !== 'types') {
-          apiUrl.searchParams.set(key, value);
-      }
+    if (key === "target" || key === "callback" || key === "s") {
+      return;
+    }
+    apiUrl.searchParams.set(key, value);
   });
-  // ---------- 修改结束 ----------
 
-  // 必须保留原有的 fetch 请求！
+  if (!apiUrl.searchParams.has("types")) {
+    return new Response("Missing types", { status: 400 });
+  }
+
   const upstream = await fetch(apiUrl.toString(), {
     headers: {
       "User-Agent": request.headers.get("User-Agent") ?? "Mozilla/5.0",
@@ -186,7 +173,6 @@ async function proxyApiRequest(url: URL, request: Request, waitUntil?: (promise:
 
   return response;
 }
-
 
 export async function onRequest({ request, waitUntil }: { request: Request, waitUntil: (promise: Promise<any>) => void }): Promise<Response> {
   if (request.method === "OPTIONS") {
